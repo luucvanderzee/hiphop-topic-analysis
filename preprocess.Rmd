@@ -1,0 +1,77 @@
+---
+title: "Preprocess",
+author: "Luuc van der Zee",
+output: html_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "##"
+)
+```
+
+```{r, echo = FALSE}
+library(DBI)
+library(RSQLite)
+library(tidyverse)
+```
+
+First, load the data from the database:
+
+```{r}
+db_path <- "../js/genius/db/data.db"
+con <- dbConnect(RSQLite::SQLite(), db_path)
+table_name <- "songs"
+songs <- dbReadTable(con, table_name)
+dbDisconnect(con)
+
+songs_tbl <- as_tibble(songs)
+```
+
+## Removing missing lyrics
+
+Turns out there are also a few lyrics missing. We will remove those too:
+
+```{r}
+songs_tbl <- songs_tbl %>%
+  filter(!is.na(lyrics))
+```
+
+## Removing short lyrics
+
+Some songs (mainly skits) have very short lyrics. We will remove those too:
+
+```{r}
+songs_tbl <- songs_tbl %>%
+  mutate(length = nchar(lyrics)) %>%
+  filter(length > 133) %>%
+  select(id, artist, url, lyrics, date) %>%
+  rename(year = date)
+```
+
+## Removing duplicate songs
+
+```{r}
+songs_tbl <- songs_tbl %>% distinct(url, .keep_all = TRUE)
+```
+
+## Remove French and German artists
+
+```{r}
+foreign_language_artists <- c(
+  "Casper",
+  "Manau"
+)
+
+songs_tbl <- songs_tbl %>% 
+  filter(!(artist %in% foreign_language_artists))
+```
+
+## Output
+
+Finally, we will save the resulting cleaned data to csv:
+
+```{r}
+write_csv(songs_tbl, "./songs.csv")
+```

@@ -1,0 +1,140 @@
+---
+title: "Topic analysis",
+author: "Luuc van der Zee",
+output: html_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "##"
+)
+```
+
+```{r, echo = FALSE}
+library("quanteda", quietly = TRUE, warn.conflicts = FALSE, verbose = FALSE)
+library(tidyverse)
+library(topicmodels)
+library(knitr)
+```
+
+## Data loading
+
+```{r}
+songs <- read_csv("./songs.csv")
+
+songs_dfm <- songs %>%
+  select(id, lyrics) %>%
+  corpus(docid_field = "id", text_field="lyrics") %>%
+  dfm(remove = stopwords("en"), remove_punct = T, remove_numbers = T) %>%
+  dfm_trim(min_termfreq = 2)
+```
+
+## Running the topic model
+
+```{r}
+number_of_topics <- 30
+
+songs_lda_model <- LDA(
+  songs_dfm,
+  k = number_of_topics,
+  method = "Gibbs",
+  control = list(verbose=0L, seed = 123, burnin = 100, iter = 500)
+)
+```
+
+## Validating topic coherence (word intrusion)
+
+First, we will create a word intrusion test as follows:
+
+```{r}
+terms_per_topic <- get_terms(songs_lda_model, 15)
+
+set.seed(123)
+
+intruders <- sample(songs_dfm@Dimnames$features, number_of_topics)
+terms_with_intrusion <- matrix(1:number_of_topics %>% sapply(function(i) {
+  row <- c(
+    terms_per_topic[1:5, i],
+    intruders[i]
+  )
+
+  return(sample(row))
+}), ncol = 6, nrow = 30, byrow = T)
+
+write_csv(terms_with_intrusion %>% as_tibble(), './word_intrusion/word-intrusion-test.csv', col_names = FALSE)
+```
+
+We now load in the answers that people gave to the intrusion test so that we can measure topic coherence:
+
+```{r}
+
+```
+
+## Coming up with topic names
+
+First, we will view the first 15 words of each topic. Second, we will get the song that has the highest value for that particular topic, which we will refer to as the most 'representative'. Based on the words and the most representative song, we will then pick a name for each topic.
+
+```{r}
+song_topic_probability_matrix <- songs_lda_model@gamma
+
+get_most_representative_songs <- function(topic_number, number_of_songs = 5) {
+  topic_probability_vector <- song_topic_probability_matrix[, topic_number] %>% as.vector()
+  indices_most_representative_songs <- order(topic_probability_vector, decreasing = TRUE)[1:number_of_songs] 
+  
+  return(songs$url[indices_most_representative_songs])
+}
+
+strip_url <- function(url) {
+  result <- url %>% substr(nchar("https://genius.com/")  + 1, nchar(url) - nchar('-lyrics'))
+  
+  if (nchar)
+  
+  return(result)
+}
+
+songs_per_topic <- matrix(
+  1:number_of_topics %>%
+    sapply(get_most_representative_songs) %>%
+    sapply(strip_url),
+  ncol = 30
+)
+
+topic_names <- c(
+  "1. Making love",
+  "2. Words ending in -ing",
+  "3. Working it/starting fights",
+  "4. Rapping (1)",
+  "5. Today/tonight",
+  "6. Getting high",
+  "7. Past tense",
+  "8. Let's go/La la la",
+  "9. Money",
+  "10. Race and police",
+  "11. Filler words",
+  "12. Miscellaneous (1)",
+  "13. Trap vernacular",
+  "14. Miscellaneous (2)",
+  "15. Love problems",
+  "16. Creole clubbing",
+  "17. Filler words",
+  "18. Religion and space",
+  "19. Miscellaneous (3)",
+  "20. N-word",
+  "21. Foreign languages",
+  "22. Miscellaneous (4)",
+  "23. Life and nature",
+  "24. Miscellaneous (5)",
+  "25. The urban",
+  "26. Counting",
+  "27. Shaking it",
+  "28. Violence",
+  "29. Rapping (2)",
+  "30. Sex-related swearing"
+)
+
+colnames(terms_per_topic) <- topic_names
+colnames(songs_per_topic) <- topic_names
+
+kable(songs_per_topic[, 1:5], format = "markdown", longtable = TRUE)
+```
