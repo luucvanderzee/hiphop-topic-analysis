@@ -16,6 +16,7 @@ library("quanteda", quietly = TRUE, warn.conflicts = FALSE, verbose = FALSE)
 library(tidyverse)
 library(topicmodels)
 library(knitr)
+library(readxl)
 ```
 
 ## Data loading
@@ -43,37 +44,9 @@ songs_lda_model <- LDA(
 )
 ```
 
-## Validating topic coherence (word intrusion)
-
-First, we will create a word intrusion test as follows:
-
-```{r}
-terms_per_topic <- get_terms(songs_lda_model, 15)
-
-set.seed(123)
-
-intruders <- sample(songs_dfm@Dimnames$features, number_of_topics)
-terms_with_intrusion <- matrix(1:number_of_topics %>% sapply(function(i) {
-  row <- c(
-    terms_per_topic[1:5, i],
-    intruders[i]
-  )
-
-  return(sample(row))
-}), ncol = 6, nrow = 30, byrow = T)
-
-write_csv(terms_with_intrusion %>% as_tibble(), './word_intrusion/word-intrusion-test.csv', col_names = FALSE)
-```
-
-We now load in the answers that people gave to the intrusion test so that we can measure topic coherence:
-
-```{r}
-
-```
-
 ## Coming up with topic names
 
-First, we will view the first 15 words of each topic. Second, we will get the song that has the highest value for that particular topic, which we will refer to as the most 'representative'. Based on the words and the most representative song, we will then pick a name for each topic.
+First, we will view the first 10 words of each topic. Second, we will get the 5 songs that have the highest probability for that particular topic, which we will refer to as the most 'representative'. Based on the terms and the most representative songs, we will then pick a name for each topic.
 
 ```{r}
 song_topic_probability_matrix <- songs_lda_model@gamma
@@ -87,9 +60,6 @@ get_most_representative_songs <- function(topic_number, number_of_songs = 5) {
 
 strip_url <- function(url) {
   result <- url %>% substr(nchar("https://genius.com/")  + 1, nchar(url) - nchar('-lyrics'))
-  
-  if (nchar)
-  
   return(result)
 }
 
@@ -132,9 +102,88 @@ topic_names <- c(
   "29. Rapping (2)",
   "30. Sex-related swearing"
 )
+```
 
+
+## Validating topic coherence (word intrusion)
+
+First, we will create a word intrusion test as follows:
+
+```{r}
+terms_per_topic <- get_terms(songs_lda_model, 10)
+
+set.seed(123)
+
+intruders <- sample(songs_dfm@Dimnames$features, number_of_topics)
+terms_with_intrusion <- matrix(1:number_of_topics %>% sapply(function(i) {
+  row <- c(
+    terms_per_topic[1:5, i],
+    intruders[i]
+  )
+
+  return(sample(row))
+}), ncol = 6, nrow = 30, byrow = T)
+
+write_csv(terms_with_intrusion %>% as_tibble(), './word_intrusion/word-intrusion-test.csv', col_names = FALSE)
+```
+
+We now load in the answers that people gave to the intrusion test so that we can measure topic coherence:
+
+```{r}
+all_answers <- read_excel("./word_intrusion/answers-test.xlsx") %>%
+  select(-QUESTION)
+
+number_of_respondents <- ncol(all_answers)
+
+get_topic_coherence <- function(topic_number) {
+  intruder <- intruders[topic_number]
+  answers <- all_answers[topic_number, ]
+  
+  return(sum(answers == intruder) / number_of_respondents) 
+}
+
+coherence_per_topic <- 1:30 %>% sapply(get_topic_coherence)
+mean_coherence <- mean(coherence_per_topic)
+baseline_coherence <- 1 / 6
+
+ggplot(tibble(topic = 1:30 %>% as.factor(), coherence = coherence_per_topic), aes(x = topic, y = coherence)) +
+  geom_col() +
+  geom_hline(yintercept = mean_coherence, color = "blue") +
+  geom_hline(yintercept = baseline_coherence, color = "red")
+```
+
+## Creating topic tables
+
+```{r}
+# This part was used to create the tables in the `./topics` folder
 colnames(terms_per_topic) <- topic_names
 colnames(songs_per_topic) <- topic_names
 
-kable(songs_per_topic[, 1:5], format = "markdown", longtable = TRUE)
+# kable(songs_per_topic[, 1:5], format = "markdown", longtable = TRUE)
 ```
+
+## Plotting topics over time
+
+```{r}
+plot_topic_over_time <- function(topic_number) {
+  topic_probability_vector <- song_topic_probability_matrix[, topic_number] %>% as.vector()
+  topic_tbl <- tibble(
+    year = songs$year,
+    topic_probability = topic_probability_vector
+  )
+  
+  mean_probability_per_year <- topic_tbl %>%
+    group_by(year) %>%
+    summarize(mean_probability = mean(topic_probability))
+  
+  ggplot(
+    mean_probability_per_year,
+    aes(x = year, y = mean_probability)
+  ) +
+    geom_line() +
+    geom_point()
+}
+
+# plot_topic_over_time(30)
+```
+

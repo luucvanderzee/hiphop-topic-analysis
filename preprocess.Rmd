@@ -68,6 +68,12 @@ songs_tbl <- songs_tbl %>%
   filter(!(artist %in% foreign_language_artists))
 ```
 
+## For some reason, one song seems to be form the year 1901. Fix this
+
+```{r}
+songs_tbl <- songs_tbl %>% mutate(year = replace(year, year == 1901, 2010))
+```
+
 ## Output
 
 Finally, we will save the resulting cleaned data to csv:
